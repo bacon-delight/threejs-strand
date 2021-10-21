@@ -2,6 +2,13 @@
 import "./style.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader";
+
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+
 import fragment from "./shaders/fragment.glsl";
 import vertex from "./shaders/vertex.glsl";
 
@@ -15,7 +22,7 @@ const camera = new THREE.PerspectiveCamera(
 	0.01,
 	100
 );
-camera.position.set(0, 0, 3);
+camera.position.set(0, 0, 4);
 camera.lookAt(new THREE.Vector3());
 
 // Renderer
@@ -44,17 +51,24 @@ let time = 0;
 // -------------------------------------------------------------------------------------------------------------------------
 
 // Lights
-const ambient = new THREE.AmbientLight(0xcccccc, 0.8);
-scene.add(ambient);
-const light = new THREE.DirectionalLight(0xffffff, 3);
-light.position.set(0, 1000, 5000);
-scene.add(light);
+// const ambient = new THREE.AmbientLight(0xcccccc, 0.8);
+// scene.add(ambient);
+// const light = new THREE.DirectionalLight(0xffffff, 3);
+// light.position.set(0, 1000, 5000);
+// scene.add(light);
 
 // Light Helpers
 // const lightHelper = new THREE.DirectionalLightHelper(light);
 // scene.add(lightHelper);
 
 // -------------------------------------------------------------------------------------------------------------------------
+
+const gltfLoader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath(
+	"https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/js/libs/draco/"
+);
+gltfLoader.setDRACOLoader(dracoLoader);
 
 const material = new THREE.ShaderMaterial({
 	extensions: {
@@ -66,22 +80,65 @@ const material = new THREE.ShaderMaterial({
 			type: "f",
 			value: 0,
 		},
+		uColor1: {
+			value: new THREE.Color(0x612574),
+		},
+		uColor2: {
+			value: new THREE.Color(0x293583),
+		},
+		uColor3: {
+			value: new THREE.Color(0x1954ec),
+		},
 		resolution: {
 			type: "v4",
 			value: new THREE.Vector4(),
 		},
-		// uvRate1: {
-		// 	value: new THREE.Vector2(1, 1),
-		// },
 	},
 	// wireframe: true,
-	// transparent: true,
+	transparent: true,
 	vertexShader: vertex,
 	fragmentShader: fragment,
+	depthTest: false,
+	depthWrite: false,
+	blending: THREE.AdditiveBlending,
 });
-const geometry = new THREE.PlaneGeometry(1, 1, 10, 10);
-const sphere = new THREE.Points(geometry, material);
-scene.add(sphere);
+
+gltfLoader.load("./shaders/dna.glb", (gtlf) => {
+	const geometry = gtlf.scene.children[0].geometry;
+	geometry.center();
+
+	const numberOfParticles = geometry.attributes.position.array.length / 3;
+	const random = new Float32Array(numberOfParticles);
+	const randomColor = new Float32Array(numberOfParticles);
+	for (let i = 0; i < numberOfParticles; i++) {
+		random.set([Math.random()], i);
+		randomColor.set([Math.random()], i);
+	}
+	geometry.setAttribute("random", new THREE.BufferAttribute(random, 1));
+	geometry.setAttribute(
+		"randomColor",
+		new THREE.BufferAttribute(randomColor, 1)
+	);
+
+	const strand = new THREE.Points(geometry, material);
+	scene.add(strand);
+});
+
+// -------------------------------------------------------------------------------------------------------------------------
+
+// Post Processing - Bloompass
+const renderScene = new RenderPass(scene, camera);
+const bloomPass = new UnrealBloomPass(
+	new THREE.Vector2(window.innerWidth, window.innerHeight),
+	1.5,
+	0.9,
+	0.85
+);
+
+const composer = new EffectComposer(renderer);
+composer.setSize(window.innerWidth, window.innerHeight);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
 
 // -------------------------------------------------------------------------------------------------------------------------
 
@@ -89,7 +146,8 @@ scene.add(sphere);
 function animate() {
 	// Animation
 	requestAnimationFrame(animate);
-	renderer.render(scene, camera);
+	// renderer.render(scene, camera);
+	composer.render();
 }
 animate();
 
